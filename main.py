@@ -2,6 +2,7 @@ import pygame
 import sys
 import os
 import math
+import random
 
 pygame.init()
 pygame.font.init()
@@ -16,19 +17,26 @@ pygame.mouse.set_visible(False)
 TILE_SIZE = (screen_width + screen_height) // 25
 BRUSH = 'h'
 GAMEMODE = 'building'
+center_x = 0
+center_y = 0
+shooting = 0
+shoot_sound = pygame.mixer.Sound(os.path.join('Data', 'sounds', 'shoot_sound.mp3'))
 tile_images = {
     '0': pygame.image.load(os.path.join('Data', 'tile_sprites', 'Blank.png')),
     'furnace': pygame.image.load(os.path.join('Data', 'tile_sprites', 'furnace.png')),
     'drill': pygame.image.load(os.path.join('Data', 'tile_sprites', 'drill.png')),
     'heater': pygame.image.load(os.path.join('Data', 'tile_sprites', 'heater.png')),
+    'center': pygame.image.load(os.path.join('Data', 'tile_sprites', 'main.png')),
     'turret': pygame.image.load(os.path.join('Data', 'turret_sprites', '1.png'))
 }
+tile_images['0'].set_colorkey(pygame.Color('white'))
 tile_codes = {
     '0': '0',
     'f': 'furnace',
     'd': 'drill',
     'h': 'heater',
-    't': 'turret'
+    't': 'turret',
+    'c': 'center'
 }
 modes = ['building', 'turret control']
 for e in tile_images:
@@ -56,12 +64,39 @@ class Crosshair(pygame.sprite.Sprite):
         self.rect.center = pygame.mouse.get_pos()
 
 
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x, y, d):
+        super().__init__(particles)
+        self.image = pygame.image.load(os.path.join('Data', 'bullet.png'))
+        self.image = pygame.transform.scale(self.image, (50, 50))
+        self.rect = self.image.get_rect().move(x, y - 50)
+        self.x = x
+        self.y = y - 50
+        self.dir = math.radians(math.degrees(d) + random.randint(-10, 10))
+        self.timer = 150
+
+    def update(self):
+        self.x += math.cos(self.dir) * 20
+        self.y += math.sin(self.dir) * 20
+        self.rect.center = round(self.x), round(self.y)
+        self.timer -= 1
+        if self.timer == 0:
+            self.kill()
+
+
+# class Enemy(pygame.sprite.Sprite):
+
+
 class Tile(pygame.sprite.Sprite):
     def __init__(self, tile_type, pos_x, pos_y):
+        global center_x, center_y
         super().__init__(tiles_group)
         self.image = tile_images[tile_type]
         self.tile_type = tile_type
         self.rect = self.image.get_rect().move(pos_x * TILE_SIZE, pos_y * TILE_SIZE)
+        if tile_type == 'c':
+            center_x = self.rect.x
+            center_y = self.rect.y
         self.recharge = 0
         self.angle = 0
         self.x = pos_x
@@ -98,7 +133,7 @@ class Tile(pygame.sprite.Sprite):
             self.rect = self.image.get_rect().move(self.x * TILE_SIZE, self.y * TILE_SIZE)
 
     def handle_turret(self):
-        global debug
+        global resources
         if GAMEMODE == 'turret control':
             mouse_x, mouse_y = crosshair.rect.center
             rel_x, rel_y = mouse_x - self.rect.center[0] - TILE_SIZE // 2, mouse_y - self.rect.center[1] - TILE_SIZE // 2
@@ -107,14 +142,22 @@ class Tile(pygame.sprite.Sprite):
                 self.angle += 360
             if self.angle < 0:
                 self.angle += 360
-            debug = self.angle
+            if shooting:
+                if self.recharge == 0:
+                    if resources['elec'] >= 5:
+                        Bullet(self.rect.center[0], self.rect.center[1], math.atan2(rel_y, rel_x))
+                        shoot_sound.play()
+                        self.recharge = random.randint(25, 35)
+                        resources['elec'] -= 5
+                else:
+                    self.recharge -= 1
         self.image = turret_sprites[int(self.angle / 5.625)]
 
 
-level_width = 10
-level_height = 6
+level_width = 11
+level_height = 7
 offset_x = 2
-offset_y = 2
+offset_y = 1
 
 
 # resources
@@ -131,6 +174,9 @@ crosshair = Crosshair("cursor.png")
 ui_group = pygame.sprite.Group()
 ui_group.add(crosshair)
 tiles_group = pygame.sprite.Group()
+particles = pygame.sprite.Group()
+
+level[3][5] = 'c'
 
 
 def create_level(width, height):
@@ -141,25 +187,28 @@ def create_level(width, height):
 
 
 def get_click(pos):
+    global shooting
     cell = (pos[0] - offset_x * TILE_SIZE) // TILE_SIZE, (pos[1] - offset_y * TILE_SIZE) // TILE_SIZE
     if GAMEMODE == 'building':
         if 0 <= cell[0] <= level_width - 1 and 0 <= cell[1] <= level_height - 1:
-            level[cell[1]][cell[0]] = BRUSH
+            if level[cell[1]][cell[0]] == '0' or (BRUSH == '0' and level[cell[1]][cell[0]] != 'c'):
+                level[cell[1]][cell[0]] = BRUSH
+    elif GAMEMODE == 'turret control':
+        shooting = 1 - shooting
 
 
 def ui_draw():
     txt_y = screen_height - 100
-    screen.blit(test_font.render(f'Electricity: {math.floor(resources["elec"])}', False, (255, 255, 255)), (100, txt_y))
-    screen.blit(test_font.render(f'Gamemode: {GAMEMODE}', False, (255, 255, 255)), (100, 100))
-    screen.blit(test_font.render(f'Raw ore: {resources["raw_ore"]}', False, (255, 255, 255)), (600, txt_y))
-    screen.blit(test_font.render(f'Smelted ore: {resources["smelt_ore"]}', False, (255, 255, 255)), (1100, txt_y))
-    screen.blit(test_font.render(f'FPS: {int(clock.get_fps())}', False, (255, 255, 255)), (1600, txt_y))
-    screen.blit(test_font.render(f'Debug: {debug}', False, (255, 255, 255)), (2100, txt_y))
+    screen.blit(test_font.render(f'Electricity: {math.floor(resources["elec"])}', True, (255, 255, 255)), (100, txt_y))
+    screen.blit(test_font.render(f'Gamemode: {GAMEMODE}', True, (255, 255, 255)), (100, 100))
+    screen.blit(test_font.render(f'Raw ore: {resources["raw_ore"]}', True, (255, 255, 255)), (600, txt_y))
+    screen.blit(test_font.render(f'Smelted ore: {resources["smelt_ore"]}', True, (255, 255, 255)), (1100, txt_y))
+    screen.blit(test_font.render(f'FPS: {int(clock.get_fps())}', True, (255, 255, 255)), (1600, txt_y))
+    screen.blit(test_font.render(f'Debug: {debug}', True, (255, 255, 255)), (2100, txt_y))
 
 
 create_level(level_width, level_height)
 m = 0
-
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -183,6 +232,8 @@ while True:
                 GAMEMODE = modes[m]
     screen.blit(background, (0, 0))
     tiles_group.draw(screen)
+    particles.draw(screen)
+    particles.update()
     ui_group.draw(screen)
     ui_group.update()
     ui_draw()
