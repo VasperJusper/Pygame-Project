@@ -20,6 +20,7 @@ GAMEMODE = 'building'
 center_x = 0
 center_y = 0
 shooting = 0
+m = 0
 shoot_sound = pygame.mixer.Sound(os.path.join('Data', 'sounds', 'shoot_sound.mp3'))
 tile_images = {
     '0': pygame.image.load(os.path.join('Data', 'tile_sprites', 'Blank.png')),
@@ -208,7 +209,7 @@ def ui_draw():
 
 
 create_level(level_width, level_height)
-m = 0
+
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
